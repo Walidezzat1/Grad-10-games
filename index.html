@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فيزياء التمويه - أونلاين</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: radial-gradient(circle at top, #0f172a, #1e293b);
+            color: #f8fafc;
+            min-height: 100vh;
+            overflow-x: hidden;
+            margin: 0;
+        }
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .btn-option:active { transform: scale(0.96); }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.6); border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.9); }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4 sm:p-6 min-h-screen relative">
+
+    <!-- صندوق الرسائل المخصص -->
+    <div id="message-box" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
+
+    <div id="game-app" class="max-w-4xl w-full glass-panel rounded-3xl p-6 sm:p-10 relative min-h-[600px] flex flex-col z-10 shadow-2xl">
+        <div id="loading-screen" class="flex flex-col items-center justify-center h-full flex-grow">
+            <div class="w-12 h-12 border-4 border-white/10 border-t-purple-500 rounded-full animate-spin mb-6"></div>
+            <p class="text-gray-300 text-xl font-bold animate-pulse">جاري الاتصال بخوادم الفيزياء...</p>
+        </div>
+    </div>
+    
+    <div class="mt-6 text-slate-400/80 text-sm font-bold text-center z-0 bg-slate-900/50 px-6 py-2 rounded-full border border-slate-700">
+        <i class="fas fa-globe text-blue-500 ml-2"></i>
+        نسخة اللعب عبر الإنترنت (Multi-player) - إشراف موجه الفيزياء: أ/ وليد عزت
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =================================================================
+        // قاعدة البيانات الشاملة للأسئلة
+        // =================================================================
+        const physicsData = [
+            // مصطلح علمي
+            { category: "مصطلح علمي", prompt: "حركة اهتزازية تتناسب فيها قوة الإرجاع طردياً مع الإزاحة وتعاكسها في الاتجاه.", answer: "الحركة التوافقية البسيطة" },
+            { category: "مصطلح علمي", prompt: "أقصى إزاحة للجسم المهتز عن موضع اتزانه.", answer: "سعة الاهتزازة" },
+            { category: "مصطلح علمي", prompt: "الزمن الذي يستغرقه الجسم المهتز لعمل اهتزازة كاملة.", answer: "الزمن الدوري" },
+            { category: "مصطلح علمي", prompt: "عدد الاهتزازات الكاملة التي يحدثها الجسم المهتز في الثانية الواحدة.", answer: "التردد" },
+            { category: "مصطلح علمي", prompt: "اضطراب ينتقل في الوسط وينقل معه الطاقة في اتجاه انتشاره.", answer: "الموجة" },
+            { category: "مصطلح علمي", prompt: "موجات تهتز فيها جزيئات الوسط في نفس اتجاه انتشار الموجة، وتتكون من تضاغطات وتخلخلات.", answer: "الموجات الطولية" },
+            { category: "مصطلح علمي", prompt: "موجات تهتز فيها جزيئات الوسط عمودياً على اتجاه انتشار الموجة، وتتكون من قمم وقيعان.", answer: "الموجات المستعرضة" },
+            { category: "مصطلح علمي", prompt: "المسافة بين قمتين متتاليتين أو قاعين متتاليين.", answer: "الطول الموجي" },
+            { category: "مصطلح علمي", prompt: "المسافة التي تقطعها الموجة في الثانية الواحدة.", answer: "سرعة الموجة" },
+            { category: "مصطلح علمي", prompt: "تنتج من تراكب موجتين متماثلتين تسيران في اتجاهين متعاكسين في نفس الوسط.", answer: "الموجات الموقوفة" },
+            { category: "مصطلح علمي", prompt: "مواضع في الموجة الموقوفة تنعدم فيها سعة الاهتزازة.", answer: "العقد" },
+            { category: "مصطلح علمي", prompt: "مواضع في الموجة الموقوفة تكون فيها سعة الاهتزازة أكبر ما يمكن.", answer: "البطون" },
+            { category: "مصطلح علمي", prompt: "الشحنات الكهربائية التي تتجمع وتحتجز في مكان ما ولا تتدفق.", answer: "الكهرباء الساكنة" },
+            { category: "مصطلح علمي", prompt: "القوة الكهربائية المتبادلة بين شحنتين تتناسب طردياً مع حاصل ضربهما وعكسياً مع مربع المسافة بينهما.", answer: "قانون كولوم" },
+            { category: "مصطلح علمي", prompt: "تدفق الشحنات الكهربائية (الإلكترونات) عبر موصل في اتجاه واحد.", answer: "التيار الكهربائي" },
+            { category: "مصطلح علمي", prompt: "مقدار الشحنة الكهربائية التي تعبر مقطعاً من الموصل في الثانية الواحدة.", answer: "شدة التيار الكهربائي" },
+            { category: "مصطلح علمي", prompt: "الممانعة التي يلقاها التيار الكهربائي أثناء مروره في الموصل.", answer: "المقاومة الكهربائية" },
+            { category: "مصطلح علمي", prompt: "مقدار الشغل المبذول لنقل وحدة الشحنات الكهربائية الموجبة بين نقطتين.", answer: "فرق الجهد" },
+            { category: "مصطلح علمي", prompt: "شدة التيار المار في موصل تتناسب طردياً مع فرق الجهد بين طرفيه عند ثبوت درجة الحرارة.", answer: "قانون أوم" },
+            { category: "مصطلح علمي", prompt: "الطاقة الكهربائية المستهلكة أو المحولة في وحدة الزمن.", answer: "القدرة الكهربائية" },
+            { category: "مصطلح علمي", prompt: "دائرة يمر فيها نفس التيار في جميع المقاومات دون تفرع، ويكون التيار ثابتاً.", answer: "دائرة التوالي" },
+            { category: "مصطلح علمي", prompt: "دائرة يتجزأ فيها التيار على مسارات متعددة ويكون فرق الجهد فيها ثابتاً.", answer: "دائرة التوازي" },
+            { category: "مصطلح علمي", prompt: "مواد تسمح بمرور الشحنات الكهربائية من خلالها بسهولة مثل النحاس.", answer: "المواد الموصلة" },
+            { category: "مصطلح علمي", prompt: "مواد لا تسمح بمرور الشحنات الكهربائية من خلالها مثل المطاط.", answer: "المواد العازلة" },
+            { category: "مصطلح علمي", prompt: "قوة تعمل دائما على إعادة الجسم المهتز إلى موضع اتزانه الأصلي.", answer: "قوة الإرجاع" },
+            { category: "مصطلح علمي", prompt: "منحنى يمثل العلاقة بين الإزاحة والزمن للحركة التوافقية البسيطة.", answer: "المنحنى الجيبي" },
+            { category: "مصطلح علمي", prompt: "موجات تتطلب وسطا ماديا لانتشارها ولا تنتقل في الفراغ.", answer: "الموجات الميكانيكية" },
+            { category: "مصطلح علمي", prompt: "موجات تتكون من مجالات كهربائية ومغناطيسية مهتزة ولا تتطلب وسطا ماديا.", answer: "الموجات الكهرومغناطيسية" },
+            { category: "مصطلح علمي", prompt: "المنطقة التي تتقارب فيها جزيئات الوسط في الموجة الطولية.", answer: "التضاغط" },
+            { category: "مصطلح علمي", prompt: "المنطقة التي تتباعد فيها جزيئات الوسط في الموجة الطولية.", answer: "التخلخل" },
+            { category: "مصطلح علمي", prompt: "ظاهرة ارتداد الموجات عند اصطدامها بحاجز.", answer: "انعكاس الموجات" },
+            { category: "مصطلح علمي", prompt: "ظاهرة انحراف الموجات عن مسارها عند انتقالها بين وسطين مختلفين.", answer: "انكسار الموجات" },
+            { category: "مصطلح علمي", prompt: "تراكب موجتين أو أكثر ينتج عنه تقوية أو إضعاف لسعة الموجة.", answer: "تداخل الموجات" },
+            { category: "مصطلح علمي", prompt: "النغمة التي يصدرها الوتر عندما يهتز كقطعة واحدة وتكون أقل تردد.", answer: "النغمة الأساسية" },
+            { category: "مصطلح علمي", prompt: "عملية انتقال الشحنات من جسم لآخر نتيجة التلامس المباشر.", answer: "الشحن بالتوصيل (اللمس)" },
+            { category: "مصطلح علمي", prompt: "عملية شحن جسم متعادل دون ملامسته لجسم مشحون آخر.", answer: "الشحن بالتأثير (الحث)" },
+            { category: "مصطلح علمي", prompt: "تفريغ الشحنات الكهربائية الزائدة من الجسم إلى الأرض.", answer: "التأريض" },
+            { category: "مصطلح علمي", prompt: "جهاز يستخدم للكشف عن الشحنات الكهربائية الساكنة ونوعها.", answer: "الكشاف الكهربائي" },
+            { category: "مصطلح علمي", prompt: "الحيز الذي تظهر فيه آثار القوة الكهربائية للشحنة.", answer: "المجال الكهربائي" },
+            { category: "مصطلح علمي", prompt: "مواد شبه موصلة تقل مقاومتها بارتفاع درجة الحرارة.", answer: "أشباه الموصلات" },
+            { category: "مصطلح علمي", prompt: "مقاومات تتغير قيمتها بتغير طول السلك المستخدم فيها لتغيير شدة التيار.", answer: "المقاومة المتغيرة (الريوستات)" },
+            { category: "مصطلح علمي", prompt: "المسافة بين مركزي تضاغطين متتاليين أو تخلخلين متتاليين.", answer: "الطول الموجي للموجة الطولية" },
+            { category: "مصطلح علمي", prompt: "أداة تحمي الدائرة الكهربائية من التلف عند مرور تيار عالي بداخلها.", answer: "المنصهر (الفيوز)" },
+
+            // أكمل الفراغ
+            { category: "أكمل الفراغ", prompt: "يتناسب الزمن الدوري للبندول البسيط طرديا مع الجذر التربيعي لـ ________.", answer: "طول الخيط" },
+            { category: "أكمل الفراغ", prompt: "الموجات الصوتية في الهواء تعتبر موجات ________ لأنها تتكون من تضاغطات وتخلخلات.", answer: "طولية" },
+            { category: "أكمل الفراغ", prompt: "الموجات المتكونة على سطح الماء تعتبر موجات ________.", answer: "مستعرضة" },
+            { category: "أكمل الفراغ", prompt: "عند دلك ساق من الزجاج بقطعة من الحرير، تكتسب ساق الزجاج شحنة ________.", answer: "موجبة" },
+            { category: "أكمل الفراغ", prompt: "عند دلك ساق من البلاستيك بقطعة من الصوف، تكتسب ساق البلاستيك شحنة ________.", answer: "سالبة" },
+            { category: "أكمل الفراغ", prompt: "تقاس القوة الكهربائية المتبادلة بين شحنتين في النظام الدولي بوحدة الـ ________.", answer: "نيوتن" },
+            { category: "أكمل الفراغ", prompt: "تتناسب شدة التيار المار في موصل طرديا مع فرق الجهد عند ثبوت ________.", answer: "درجة الحرارة" },
+            { category: "أكمل الفراغ", prompt: "في التوصيل على التوازي، يكون ________ ثابتاً في جميع أجزاء الدائرة.", answer: "فرق الجهد" },
+            { category: "أكمل الفراغ", prompt: "في التوصيل على التوالي، تكون ________ متساوية في جميع المقاومات.", answer: "شدة التيار" },
+            { category: "أكمل الفراغ", prompt: "ينص قانون ________ على أن القوة بين شحنتين تتناسب طرديا مع ضربهما وعكسيا مع مربع المسافة.", answer: "كولوم" },
+            { category: "أكمل الفراغ", prompt: "حاصل ضرب التردد في الطول الموجي يعطينا ________ الموجة.", answer: "سرعة" },
+            { category: "أكمل الفراغ", prompt: "وحدة قياس التردد في النظام الدولي هي الـ ________.", answer: "هيرتز (Hz)" },
+            { category: "أكمل الفراغ", prompt: "المقاومة المكافئة لعدة مقاومات متصلة على ________ تكون أكبر من أكبر مقاومة فيها.", answer: "التوالي" },
+            { category: "أكمل الفراغ", prompt: "المقاومة المكافئة لعدة مقاومات متصلة على ________ تكون أصغر من أصغر مقاومة فيها.", answer: "التوازي" },
+            { category: "أكمل الفراغ", prompt: "كلما زادت مساحة مقطع السلك الموصل، فإن مقاومته الكهربائية ________.", answer: "تقل" },
+            { category: "أكمل الفراغ", prompt: "الجهاز الذي يستخدم للكشف عن وجود شحنة كهربائية ونوعها يسمى ________.", answer: "الكشاف الكهربائي" },
+            { category: "أكمل الفراغ", prompt: "الشحنات الكهربائية المتشابهة تتنافر، والشحنات الكهربائية المختلفة ________.", answer: "تتجاذب" },
+            { category: "أكمل الفراغ", prompt: "وحدة قياس الشحنة الكهربائية هي الـ ________.", answer: "كولوم" },
+            { category: "أكمل الفراغ", prompt: "العلاقة بين التردد والزمن الدوري علاقة ________.", answer: "عكسية" },
+            { category: "أكمل الفراغ", prompt: "تنتقل الموجات الكهرومغناطيسية في الفراغ بسرعة ________.", answer: "ثابتة (سرعة الضوء)" },
+            { category: "أكمل الفراغ", prompt: "إذا زاد طول خيط البندول البسيط إلى أربعة أمثاله فإن زمنه الدوري يزداد إلى ________.", answer: "الضعف" },
+            { category: "أكمل الفراغ", prompt: "عندما يهتز الجسم المهتز فإن طاقة حركته تكون قيمة عظمى عند مروره بـ ________.", answer: "موضع الاتزان" },
+            { category: "أكمل الفراغ", prompt: "تتكون الموجة الموقوفة من مناطق تهتز بسعة عظمى تسمى ________.", answer: "البطون" },
+            { category: "أكمل الفراغ", prompt: "المسافة بين عقدتين متتاليتين في الموجة الموقوفة تساوي ________ الطول الموجي.", answer: "نصف" },
+            { category: "أكمل الفراغ", prompt: "القوة بين شحنتين موجبتين هي قوة ________.", answer: "تنافر" },
+            { category: "أكمل الفراغ", prompt: "تقاس شدة التيار الكهربائي بجهاز يسمى ________.", answer: "الأمبيرمتر" },
+            { category: "أكمل الفراغ", prompt: "يوصل جهاز الأمبيرمتر في الدائرة الكهربائية على ________.", answer: "التوالي" },
+            { category: "أكمل الفراغ", prompt: "يوصل جهاز الفولتمتر في الدائرة الكهربائية على ________.", answer: "التوازي" },
+            { category: "أكمل الفراغ", prompt: "مقاومة الموصل تتناسب طردياً مع ________ الموصل.", answer: "طول" },
+            { category: "أكمل الفراغ", prompt: "إذا تم توصيل 3 مقاومات متماثلة قيمة كل منها 3 أوم على التوالي فإن المقاومة المكافئة تساوي ________ أوم.", answer: "9" },
+            { category: "أكمل الفراغ", prompt: "إذا تم توصيل مقاومتين قيمة كل منهما 4 أوم على التوازي فإن المقاومة المكافئة تساوي ________ أوم.", answer: "2" },
+            { category: "أكمل الفراغ", prompt: "قانون حفظ الشحنة ينص على أن الشحنة لا تفنى ولا تستحدث بل ________ من جسم لآخر.", answer: "تنتقل" },
+            { category: "أكمل الفراغ", prompt: "يعتبر النحاس من المواد ________ للكهرباء.", answer: "الموصلة" },
+            { category: "أكمل الفراغ", prompt: "وحدة قياس القدرة الكهربائية هي الـ ________.", answer: "واط (Watt)" },
+            { category: "أكمل الفراغ", prompt: "في الموجات الميكانيكية، تهتز جزيئات الوسط ________ على اتجاه انتشار الموجة المستعرضة.", answer: "عمودياً" },
+            { category: "أكمل الفراغ", prompt: "الصوت لا ينتقل في ________ لأنه يحتاج لوسط مادي.", answer: "الفراغ" },
+            { category: "أكمل الفراغ", prompt: "سرعة الصوت في المواد الصلبة ________ من سرعته في الغازات.", answer: "أكبر" },
+            { category: "أكمل الفراغ", prompt: "الدائرة التي ينقطع فيها التيار عند احتراق أحد المصابيح تسمى دائرة توصيل على ________.", answer: "التوالي" },
+            { category: "أكمل الفراغ", prompt: "يتم توصيل الأجهزة الكهربائية في المنازل على ________.", answer: "التوازي" },
+            { category: "أكمل الفراغ", prompt: "ميل المنحنى البياني للعلاقة بين فرق الجهد وشدة التيار يمثل ________.", answer: "المقاومة الكهربائية" },
+            { category: "أكمل الفراغ", prompt: "الشغل المبذول لنقل شحنة كهربائية يقاس بوحدة ________.", answer: "الجول" },
+
+            // سؤال مباشر
+            { category: "سؤال مباشر", prompt: "ما هو الجهاز المستخدم لقياس شدة التيار الكهربائي في الدائرة؟", answer: "الأمبيرمتر" },
+            { category: "سؤال مباشر", prompt: "ما هو الجهاز المستخدم لقياس فرق الجهد الكهربائي في الدائرة؟", answer: "الفولتمتر" },
+            { category: "سؤال مباشر", prompt: "ما هي وحدة قياس القدرة الكهربائية في النظام الدولي؟", answer: "الواط (Watt)" },
+            { category: "سؤال مباشر", prompt: "ما هي وحدة قياس شدة التيار الكهربائي؟", answer: "الأمبير (Ampere)" },
+            { category: "سؤال مباشر", prompt: "ما هي وحدة قياس المقاومة الكهربائية؟", answer: "الأوم (Ohm)" },
+            { category: "سؤال مباشر", prompt: "ما هي وحدة قياس فرق الجهد الكهربائي؟", answer: "الفولت (Volt)" },
+            { category: "سؤال مباشر", prompt: "كيف يتم توصيل جهاز الفولتمتر في الدائرة الكهربائية؟", answer: "على التوازي" },
+            { category: "سؤال مباشر", prompt: "كيف يتم توصيل جهاز الأمبيرمتر في الدائرة الكهربائية؟", answer: "على التوالي" },
+            { category: "سؤال مباشر", prompt: "ما هو الاسم الذي يطلق على الموجات التي تحتاج لوسط مادي لانتشارها (مثل الصوت)؟", answer: "الموجات الميكانيكية" },
+            { category: "سؤال مباشر", prompt: "ما هو الاسم الذي يطلق على الموجات التي يمكنها الانتشار في الفراغ (مثل الضوء)؟", answer: "الموجات الكهرومغناطيسية" },
+            { category: "سؤال مباشر", prompt: "اذكر أحد العوامل التي تتوقف عليها المقاومة الكهربائية لسلك (غير الطول ونوع المادة)؟", answer: "مساحة المقطع أو درجة الحرارة" },
+            { category: "سؤال مباشر", prompt: "بماذا تقاس الطاقة الكهربائية المستهلكة في المنازل حسب فواتير الكهرباء؟", answer: "كيلوواط.ساعة (kWh)" },
+            { category: "سؤال مباشر", prompt: "ما هي الطريقة التي تشحن بها المواد العازلة عند احتكاكها ببعضها؟", answer: "الشحن بالدلك (الاحتكاك)" },
+            { category: "سؤال مباشر", prompt: "ما العلاقة الرياضية التي تربط بين الجهد والتيار والمقاومة؟", answer: "قانون أوم (V = I * R)" },
+            { category: "سؤال مباشر", prompt: "ما نوع العلاقة بين التردد والزمن الدوري؟", answer: "علاقة عكسية" },
+            { category: "سؤال مباشر", prompt: "بماذا تسمى المسافة بين عقدتين متتاليتين أو بطنين متتاليين في الموجة الموقوفة؟", answer: "نصف طول موجي" },
+            { category: "سؤال مباشر", prompt: "ما هي العلاقة بين قوة الإرجاع والإزاحة في الحركة التوافقية البسيطة؟", answer: "طردية متعاكسة" },
+            { category: "سؤال مباشر", prompt: "ما هي وحدة قياس الزمن الدوري؟", answer: "الثانية (s)" },
+            { category: "سؤال مباشر", prompt: "ما هو نوع موجات الصوت المنتشرة في الغازات؟", answer: "موجات ميكانيكية طولية" },
+            { category: "سؤال مباشر", prompt: "من أين تستمد الدائرة الكهربائية طاقتها الأساسية؟", answer: "من مصدر الجهد (البطارية / المولد)" },
+            { category: "سؤال مباشر", prompt: "ما هي شحنة الإلكترون؟", answer: "سالبة" },
+            { category: "سؤال مباشر", prompt: "ما هي شحنة البروتون؟", answer: "موجبة" },
+            { category: "سؤال مباشر", prompt: "ما هو الجسيم المتعادل الشحنة داخل نواة الذرة؟", answer: "النيوترون" },
+            { category: "سؤال مباشر", prompt: "متى تصبح الذرة متعادلة كهربائياً؟", answer: "عندما يتساوى عدد الإلكترونات والبروتونات" },
+            { category: "سؤال مباشر", prompt: "ما الأداة المستخدمة للتحكم في فتح وإغلاق مسار التيار الكهربائي؟", answer: "المفتاح الكهربائي" },
+            { category: "سؤال مباشر", prompt: "ماذا يسمى مسار التيار الكهربائي الذي يحتوي على تفرعات ومسارات متعددة؟", answer: "دائرة التوازي" },
+            { category: "سؤال مباشر", prompt: "ماذا يسمى مسار التيار الكهربائي الذي لا يحتوي على أي تفرعات؟", answer: "دائرة التوالي" },
+            { category: "سؤال مباشر", prompt: "ما اسم الظاهرة التي تنشأ عند تراكب موجتين فينتج مناطق سكون ومناطق اهتزاز قصوى؟", answer: "الموجات الموقوفة (الساكنة)" },
+            { category: "سؤال مباشر", prompt: "ما هي الوحدة المستخدمة لقياس الشغل أو الطاقة الكهربائية دولياً؟", answer: "الجول (J)" },
+            { category: "سؤال مباشر", prompt: "ما العامل الذي إذا زاد، قلت مقاومة السلك الموصل بفرض ثبات العوامل الأخرى؟", answer: "مساحة المقطع (سمك السلك)" },
+            { category: "سؤال مباشر", prompt: "اذكر جهازاً يحول الطاقة الكهربائية إلى طاقة حرارية؟", answer: "المدفأة (أو المكواة)" },
+            { category: "سؤال مباشر", prompt: "ما هي الصيغة الرياضية لحساب القدرة الكهربائية بدلالة الجهد والتيار؟", answer: "P = V x I" },
+            { category: "سؤال مباشر", prompt: "في أي جزء من الموجة المستعرضة تكون إزاحة جزيئات الوسط لأعلى أكبر ما يمكن؟", answer: "القمة" },
+            { category: "سؤال مباشر", prompt: "أين تتركز الشحنات الكهربائية الساكنة في الموصلات الصلبة؟", answer: "على السطح الخارجي" },
+            { category: "سؤال مباشر", prompt: "ما هو نوع الشحن الذي يتم بتوصيل سلك بين جسم مشحون والأرض؟", answer: "التأريض" },
+            { category: "سؤال مباشر", prompt: "أيهما يمتلك مقاومة كهربائية أكبر: سلك نحاسي طويل أم سلك نحاسي قصير (لهما نفس السمك)؟", answer: "السلك الطويل" },
+            { category: "سؤال مباشر", prompt: "ما هي العوامل التي يتوقف عليها الزمن الدوري للبندول البسيط؟", answer: "طول الخيط وعجلة الجاذبية" },
+            { category: "سؤال مباشر", prompt: "هل يعتمد الزمن الدوري للبندول البسيط على كتلة الثقل المعلق؟", answer: "لا يعتمد" },
+            { category: "سؤال مباشر", prompt: "في الموجات الموقوفة في وتر مثبت من الطرفين، ماذا يتكون دائماً عند الطرفين المثبتين؟", answer: "عقد" },
+            { category: "سؤال مباشر", prompt: "كم عدد البطون المتكونة في وتر يهتز بنغمته الأساسية؟", answer: "بطن واحد" },
+            { category: "سؤال مباشر", prompt: "ما الجهاز المستخدم لتوليد شحنات كهربائية ساكنة بكميات كبيرة في المختبرات؟", answer: "مولد فان دي غراف" },
+
+            // ماذا يحدث
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للقوة الكهربائية بين شحنتين إذا زادت المسافة بينهما إلى الضعف؟", answer: "تقل القوة إلى الربع" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للقوة الكهربائية بين شحنتين إذا قلت المسافة بينهما إلى النصف؟", answer: "تزداد القوة إلى أربعة أمثالها" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمقاومة سلك نحاسي إذا زاد طوله للضعف؟", answer: "تزداد المقاومة للضعف" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمقاومة سلك موصل إذا زادت مساحة مقطعه للضعف؟", answer: "تقل المقاومة للنصف" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لإضاءة المصابيح المتصلة على التوازي إذا احترق أحدها؟", answer: "لا تتأثر إضاءة باقي المصابيح" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للتيار الكهربائي في دائرة التوالي إذا احترق مصباح أو انقطع السلك؟", answer: "ينقطع التيار عن كامل الدائرة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لشدة التيار المار في مقاومة ثابتة عند مضاعفة فرق الجهد بين طرفيها؟", answer: "تتضاعف شدة التيار" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للزمن الدوري لبندول بسيط إذا زادت كتلة الثقل المعلق فيه للضعف؟", answer: "لا يتأثر (يظل ثابتاً)" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لورقتي الكشاف الكهربائي المشحون بشحنة موجبة عند تقريب جسم مشحون بشحنة موجبة منه؟", answer: "يزداد انفراج الورقتين" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لسرعة الموجة الصوتية عند انتقالها من الهواء (غاز) إلى الماء (سائل)؟", answer: "تزداد سرعتها" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لسرعة الموجة الصوتية عند ارتفاع درجة حرارة الهواء؟", answer: "تزداد سرعتها" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للمقاومة المكافئة لدائرة عند إضافة مقاومة جديدة على التوالي؟", answer: "تزداد المقاومة المكافئة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للمقاومة المكافئة لدائرة عند إضافة مقاومة جديدة على التوازي؟", answer: "تقل المقاومة المكافئة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للتردد إذا قل الزمن الدوري للنصف؟", answer: "يتضاعف التردد" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لشحنة كشاف كهربائي متعادل عند لمسه بساق زجاجية مشحونة بشحنة موجبة؟", answer: "يُشحن بشحنة موجبة (شحن باللمس)" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للطول الموجي إذا تضاعف التردد (مع بقاء سرعة الموجة ثابتة)؟", answer: "يقل الطول الموجي للنصف" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمؤشر الفولتمتر إذا تم توصيله على التوالي بالخطأ في دائرة كهربائية بسيطة؟", answer: "لن يمر تيار يذكر لأن مقاومته كبيرة جداً" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لورقتي الكشاف الكهربائي المتعادل عند تقريب ساق مشحونة سالباً من قرصه دون ملامسته؟", answer: "تنفرجان نتيجة تنافر الشحنات السالبة للأسفل" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث إذا دلكت ساق من البلاستيك بقطعة من الصوف بالنسبة لانتقال الإلكترونات؟", answer: "تنتقل الإلكترونات من الصوف إلى البلاستيك" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لإضاءة مصباح إذا تم زيادة قيمة المقاومة المتغيرة المتصلة معه على التوالي؟", answer: "تقل شدة إضاءة المصباح" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لشحنتين متماثلتين (موجب وموجب) عند تقريبهما من بعضهما؟", answer: "يحدث بينهما قوة تنافر" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لموجات الصوت عندما تقابل سطحاً صلباً عاكساً؟", answer: "تنعكس مرتدة في نفس الوسط (يحدث صدى)" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للزمن الدوري لبندول بسيط إذا تم نقله إلى سطح القمر (حيث الجاذبية أقل)؟", answer: "يزداد الزمن الدوري" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لسعة الاهتزازة لجسم مهتز في الهواء مع مرور الزمن بفرض عدم وجود قوة خارجية؟", answer: "تقل تدريجياً بسبب الاحتكاك (تخامد)" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمقدار التيار الكلي في دائرة التوازي كلما أضفنا فروعاً (مقاومات) جديدة؟", answer: "يزداد التيار الكلي لانخفاض المقاومة المكافئة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمقدار الجهد الكلي في دائرة التوالي التي تحوي مقاومات متعددة؟", answer: "يتوزع (يتجزأ) على المقاومات بحسب قيمتها" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث إذا لامس شخص سلكاً مكشوفاً يحمل تياراً وكان واقفاً على أرض رطبة حافياً؟", answer: "يصاب بصدمة كهربائية نتيجة مرور التيار في جسمه للأرض" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لعدد العقد والبطون في وتر مهتز إذا زدنا تردد المصدر المهتز للضعف؟", answer: "يزداد عدد العقد والبطون للضعف" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لجزيئات الهواء عندما يمر فيها موجة صوتية؟", answer: "تهتز للأمام والخلف في نفس اتجاه الموجة مكونة تضاغطات وتخلخلات" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لمقاومة سلك من النحاس إذا قمنا بثنيه (طيّه) ليصبح طوله النصف ومساحته الضعف؟", answer: "تقل مقاومته إلى الربع" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث عندما تتداخل قمة موجة مع قمة موجة أخرى لها نفس السعة؟", answer: "يحدث تداخل بناء وتتكون قمة مضاعفة السعة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث عندما تتداخل قمة موجة مع قاع موجة أخرى لها نفس السعة؟", answer: "يحدث تداخل هدام وتنعدم سعة الموجة المحصلة" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للقوة المعيدة في النابض عندما يستقر الكتلة في موضع الاتزان الأصلي؟", answer: "تنعدم (تصبح صفراً)" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لورقتي الكشاف الكهربائي المشحون بشحنة سالبة إذا لمسنا قرصه بالإصبع؟", answer: "تنطبقان لتفريغ الشحنات إلى الأرض" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للقدرة المستهلكة في مقاومة أومية إذا تضاعف التيار المار فيها؟", answer: "تزداد إلى أربعة أمثالها" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث للشغل اللازم لنقل شحنة كهربائية إذا زاد فرق الجهد بين النقطتين للضعف؟", answer: "يتضاعف الشغل" },
+            { category: "ماذا يحدث", prompt: "ماذا يحدث لسريان التيار الكهربائي في دائرة تحتوي على مفتاح كهربائي مفتوح؟", answer: "لا يسري التيار (يتوقف)" }
+        ];
+
+        // =================================================================
+        // تهيئة الاتصال بقاعدة بيانات فايربيس للعب أونلاين
+        // =================================================================
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'physics-game-online-pro-v6';
+        
+        const MAX_PLAYERS = 30; // 30 لاعب كحد أقصى
+        let currentUser = null;
+        let currentRoomId = null;
+        let unsubscribeRoom = null;
+        let playerName = localStorage.getItem('physics_player_name') || '';
+        
+        const appDiv = document.getElementById('game-app');
+
+        // بديل لـ alert يعرض رسائل مخصصة
+        function showMessage(msg, type = 'error') {
+            const box = document.getElementById('message-box');
+            const icon = type === 'error' ? 'fa-exclamation-triangle' : 'fa-check-circle';
+            const bgClass = type === 'error' ? 'bg-red-900/90 border-red-500' : 'bg-emerald-900/90 border-emerald-500';
+            
+            box.innerHTML = `
+                <div class="${bgClass} border text-white px-6 py-4 rounded-xl shadow-2xl font-bold flex items-center justify-center text-center">
+                    <i class="fas ${icon} ml-3 text-2xl"></i>
+                    <span class="text-lg">${msg}</span>
+                </div>
+            `;
+            box.classList.remove('hidden');
+            box.style.animation = 'fadeIn 0.3s ease-out forwards';
+            
+            setTimeout(() => {
+                box.classList.add('hidden');
+            }, 4000);
+        }
+
+        function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        function getCategoryBadge(category) {
+            switch(category) {
+                case 'مصطلح علمي': return '<span class="bg-purple-900/90 text-purple-200 px-5 py-2 rounded-full text-sm font-bold shadow-lg border border-purple-500/50"><i class="fas fa-book mr-2"></i> مصطلح علمي</span>';
+                case 'أكمل الفراغ': return '<span class="bg-blue-900/90 text-blue-200 px-5 py-2 rounded-full text-sm font-bold shadow-lg border border-blue-500/50"><i class="fas fa-pen mr-2"></i> أكمل الفراغ</span>';
+                case 'سؤال مباشر': return '<span class="bg-emerald-900/90 text-emerald-200 px-5 py-2 rounded-full text-sm font-bold shadow-lg border border-emerald-500/50"><i class="fas fa-question-circle mr-2"></i> سؤال مباشر</span>';
+                case 'ماذا يحدث': return '<span class="bg-orange-900/90 text-orange-200 px-5 py-2 rounded-full text-sm font-bold shadow-lg border border-orange-500/50"><i class="fas fa-flask mr-2"></i> ماذا يحدث؟</span>';
+                default: return '';
+            }
+        }
+
+        // مصادقة الدخول
+        async function initGame() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        renderHome();
+                    }
+                });
+            } catch (error) {
+                console.error(error);
+                appDiv.innerHTML = `<div class="text-center text-red-400 mt-10">حدث خطأ في الاتصال بالخوادم. يرجى تحديث الصفحة.</div>`;
+            }
+        }
+
+        // الشاشة الرئيسية
+        function renderHome() {
+            appDiv.innerHTML = `
+                <div class="text-center fade-in flex flex-col h-full">
+                    <div class="bg-emerald-900/40 text-emerald-300 text-xs sm:text-sm py-2 px-5 rounded-full self-center mb-6 border border-emerald-500/30 flex items-center shadow-sm">
+                        <i class="fas fa-wifi mr-2"></i> متصل بالخوادم (${physicsData.length} سؤال جاهز)
+                    </div>
+                    <div class="relative inline-block mx-auto mb-4">
+                        <i class="fas fa-atom text-7xl sm:text-8xl text-purple-400 animate-spin drop-shadow-lg" style="animation-duration: 6s;"></i>
+                        <i class="fas fa-bolt text-yellow-400 text-2xl absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"></i>
+                    </div>
+                    <h1 class="text-4xl md:text-5xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 drop-shadow-md">فيزياء التمويه</h1>
+                    <p class="text-slate-300 mb-8 text-lg font-bold">تحدي الخداع (أونلاين)! هل يمكنك تضليل أصدقائك؟</p>
+                    
+                    <div class="mb-6 mt-2 max-w-sm mx-auto w-full">
+                        <label class="block text-right text-slate-300 mb-2 text-sm font-bold">اسمك في اللعبة:</label>
+                        <input type="text" id="player-name" value="${playerName}" placeholder="اكتب اسمك هنا" class="w-full bg-[#0f172a] border-2 border-purple-500/40 rounded-xl p-4 text-white text-center focus:outline-none focus:border-purple-400 text-xl transition-all shadow-inner font-bold">
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 mt-auto max-w-sm mx-auto w-full">
+                        <button id="btn-create" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl shadow-xl transition-all transform hover:scale-[1.02] active:scale-95 flex items-center justify-center text-xl">
+                            <span>إنشاء غرفة جديدة</span> <i class="fas fa-plus-circle mr-2"></i>
+                        </button>
+                        
+                        <div class="relative flex items-center py-2">
+                            <div class="flex-grow border-t border-slate-600"></div>
+                            <span class="flex-shrink-0 mx-4 text-slate-400 text-sm font-bold">أو الانضمام إلى غرفة</span>
+                            <div class="flex-grow border-t border-slate-600"></div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button id="btn-join" class="w-1/3 bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-xl transition-all flex justify-center items-center active:scale-95 text-xl shadow-lg">
+                                انضم <i class="fas fa-sign-in-alt mr-2"></i>
+                            </button>
+                            <input type="text" id="room-code-input" placeholder="رمز الغرفة" maxlength="4" class="flex-grow w-2/3 bg-[#0f172a] border-2 border-blue-500/40 rounded-xl p-4 text-white text-center focus:outline-none focus:border-blue-400 text-3xl tracking-[0.4em] uppercase transition-all shadow-inner font-mono font-bold">
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('btn-create').onclick = createRoom;
+            document.getElementById('btn-join').onclick = () => joinRoom(document.getElementById('room-code-input').value.trim().toUpperCase());
+        }
+
+        async function createRoom() {
+            const nameInput = document.getElementById('player-name').value.trim();
+            if(!nameInput) return showMessage("يرجى كتابة اسمك أولاً ليعرفك الآخرون!");
+            playerName = nameInput;
+            localStorage.setItem('physics_player_name', playerName);
+
+            const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            
+            const initialData = {
+                roomId: roomId,
+                hostId: currentUser.uid,
+                gameState: 'lobby',
+                currentQuestion: null,
+                usedQuestions: [],
+                roundOptions: [],
+                players: { [currentUser.uid]: { name: playerName, score: 0, currentFake: "", currentVote: "", isHost: true, roundScore: 0 } }
+            };
+
+            try {
+                appDiv.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="w-12 h-12 border-4 border-white/10 border-t-purple-500 rounded-full animate-spin mb-6"></div><p class="text-purple-300 font-bold text-xl">جاري إنشاء الغرفة...</p></div>`;
+                await setDoc(roomRef, initialData);
+                listenToRoom(roomId);
+            } catch (error) {
+                showMessage("حدث خطأ أثناء إنشاء الغرفة. تأكد من اتصالك بالإنترنت.");
+                renderHome();
+            }
+        }
+
+        async function joinRoom(roomId) {
+            if(!roomId || roomId.length !== 4) return showMessage("الرجاء إدخال رمز الغرفة المكون من 4 أحرف/أرقام بشكل صحيح!");
+            const nameInput = document.getElementById('player-name').value.trim();
+            if(!nameInput) return showMessage("يرجى كتابة اسمك أولاً!");
+            playerName = nameInput;
+            localStorage.setItem('physics_player_name', playerName);
+
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            
+            try {
+                appDiv.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="w-12 h-12 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin mb-6"></div><p class="text-blue-300 font-bold text-xl">جاري البحث عن الغرفة...</p></div>`;
+                const snap = await getDoc(roomRef);
+                if (!snap.exists()) { 
+                    showMessage("الغرفة غير موجودة! تأكد من الرمز المدخل."); 
+                    renderHome(); 
+                    return; 
+                }
+
+                const roomData = snap.data();
+                const currentPlayersCount = Object.keys(roomData.players).length;
+                
+                if (currentPlayersCount >= MAX_PLAYERS && !roomData.players[currentUser.uid]) {
+                    showMessage(`عذراً، الغرفة ممتلئة (الحد الأقصى ${MAX_PLAYERS} لاعب).`); 
+                    renderHome(); 
+                    return;
+                }
+                
+                if (roomData.gameState !== 'lobby' && !roomData.players[currentUser.uid]) {
+                     showMessage("اللعبة بدأت بالفعل في هذه الغرفة. لا يمكنك الانضمام في منتصف الجولة."); 
+                     renderHome(); 
+                     return;
+                }
+
+                await updateDoc(roomRef, {
+                    [`players.${currentUser.uid}`]: { 
+                        name: playerName, 
+                        score: roomData.players[currentUser.uid]?.score || 0,
+                        currentFake: roomData.players[currentUser.uid]?.currentFake || "", 
+                        currentVote: roomData.players[currentUser.uid]?.currentVote || "", 
+                        isHost: roomData.hostId === currentUser.uid,
+                        roundScore: roomData.players[currentUser.uid]?.roundScore || 0
+                    }
+                });
+                listenToRoom(roomId);
+            } catch(error) {
+                 showMessage("فشل الانضمام للغرفة."); 
+                 renderHome();
+            }
+        }
+
+        function listenToRoom(roomId) {
+            currentRoomId = roomId;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            if (unsubscribeRoom) unsubscribeRoom();
+            
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                if (!docSnap.exists()) { 
+                    showMessage("تم إنهاء الغرفة بواسطة المضيف."); 
+                    renderHome(); 
+                    return; 
+                }
+                
+                const data = docSnap.data();
+                if (!data.players[currentUser.uid]) return;
+
+                const isHost = data.hostId === currentUser.uid;
+                
+                // المضيف يتحقق تلقائياً من اكتمال الإجابات
+                if (isHost) hostAutomations(data, roomRef);
+
+                switch(data.gameState) {
+                    case 'lobby': renderLobby(data, isHost); break;
+                    case 'write': renderWrite(data); break;
+                    case 'vote': renderVote(data); break;
+                    case 'results': renderResults(data, isHost); break;
+                }
+            }, (error) => {
+                console.error("Firebase Snapshot Error:", error);
+                showMessage("حدث خطأ في الاتصال بقاعدة البيانات.");
+            });
+        }
+
+        async function hostAutomations(data, roomRef) {
+            const ObjectPlayers = data.players;
+            const playersArr = Object.values(ObjectPlayers);
+            const totalPlayers = playersArr.length;
+            
+            if (data.gameState === 'write') {
+                const playersWhoWrote = playersArr.filter(p => p.currentFake !== "");
+                // الانتقال التلقائي إذا أجاب الجميع
+                if (playersWhoWrote.length === totalPlayers && totalPlayers > 0) {
+                    forceNextPhaseInternal(data, roomRef);
+                }
+            } 
+            else if (data.gameState === 'vote') {
+                const playersWhoVoted = playersArr.filter(p => p.currentVote !== "");
+                // الانتقال التلقائي إذا صوت الجميع
+                if (playersWhoVoted.length === totalPlayers && totalPlayers > 0) {
+                    forceNextPhaseInternal(data, roomRef);
+                }
+            }
+        }
+
+        // دالة المضيف لتخطي الغائبين أو الانتقال اليدوي للمرحلة التالية
+        window.forceNextPhase = async function() {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+            const snap = await getDoc(roomRef);
+            if(snap.exists()) {
+                forceNextPhaseInternal(snap.data(), roomRef);
+            }
+        };
+
+        // المنطق الداخلي للانتقال للمرحلة التالية (يستدعى تلقائياً أو يدوياً)
+        async function forceNextPhaseInternal(data, roomRef) {
+            const ObjectPlayers = data.players;
+            const playersArr = Object.values(ObjectPlayers);
+
+            if (data.gameState === 'write') {
+                let options = [{ text: data.currentQuestion.answer, isReal: true, author: "الفيزياء" }];
+                const uniqueFakes = new Set();
+                
+                playersArr.forEach(p => {
+                    // نأخذ فقط الفخاخ التي تم كتابتها بالفعل (نتجاهل من لم يكتب)
+                    if (p.currentFake && !uniqueFakes.has(p.currentFake.toLowerCase())) {
+                        options.push({ text: p.currentFake, isReal: false, author: p.name });
+                        uniqueFakes.add(p.currentFake.toLowerCase());
+                    }
+                });
+                
+                await updateDoc(roomRef, { gameState: 'vote', roundOptions: shuffle(options) });
+            } 
+            else if (data.gameState === 'vote') {
+                let updatedPlayers = { ...data.players };
+                
+                // تصفير نقاط الجولة الحالية للجميع استعداداً لحسابها
+                for(let uid in updatedPlayers) {
+                    updatedPlayers[uid].roundScore = 0;
+                }
+
+                playersArr.forEach(p => {
+                    // نحسب النقاط فقط لمن قام بالتصويت
+                    if(p.currentVote !== "") {
+                        const votedOption = data.roundOptions.find(o => o.text === p.currentVote);
+                        if (votedOption && votedOption.isReal) {
+                            updatedPlayers[p.uid].score += 10; 
+                            updatedPlayers[p.uid].roundScore += 10; 
+                        } else if (votedOption && !votedOption.isReal) {
+                            const tricksterUid = Object.keys(ObjectPlayers).find(uid => ObjectPlayers[uid].name === votedOption.author);
+                            if (tricksterUid && tricksterUid !== p.uid) {
+                                updatedPlayers[tricksterUid].score += 15; 
+                                updatedPlayers[tricksterUid].roundScore += 15; 
+                            }
+                        }
+                    }
+                });
+                
+                await updateDoc(roomRef, { gameState: 'results', players: updatedPlayers });
+            }
+        }
+
+        function renderLobby(data, isHost) {
+            const playersArr = Object.values(data.players);
+            const playersList = playersArr.map(p => 
+                `<div class="bg-slate-800/80 border border-slate-600 p-3 rounded-xl flex items-center text-sm truncate shadow-sm transition-transform transform hover:-translate-y-1">
+                    <i class="fas ${p.isHost ? 'fa-crown text-yellow-400' : 'fa-user text-blue-400'} ml-3 text-xl"></i> 
+                    <span class="truncate font-bold text-slate-100 text-base">${p.name}</span>
+                </div>`
+            ).join('');
+
+            appDiv.innerHTML = `
+                <div class="fade-in flex flex-col h-full">
+                    <div class="text-center mb-6 bg-gradient-to-r from-purple-900/40 to-blue-900/40 p-6 rounded-3xl border border-purple-500/30 shadow-inner">
+                        <h2 class="text-sm text-purple-300 uppercase tracking-widest mb-3 font-bold"><i class="fas fa-key mr-2"></i> رمز الغرفة الخاص بك</h2>
+                        <div class="text-6xl md:text-7xl font-black tracking-[0.25em] text-white cursor-pointer hover:text-purple-400 transition-colors drop-shadow-md font-mono" 
+                             onclick="document.execCommand('copy'); navigator.clipboard.writeText('${data.roomId}').catch(()=>true); showMessage('تم نسخ رمز الغرفة', 'success');">
+                            ${data.roomId}
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-end mb-4 px-2 border-b border-slate-700 pb-3">
+                        <h3 class="text-xl font-bold text-slate-200">العلماء المتصلون</h3>
+                        <span class="bg-blue-600/30 text-blue-300 text-sm px-4 py-1.5 rounded-full font-bold border border-blue-500/30">${playersArr.length} / ${MAX_PLAYERS}</span>
+                    </div>
+                    
+                    <div class="flex-grow overflow-y-auto mb-6 custom-scrollbar p-2">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${playersList}</div>
+                        ${playersArr.length === 1 ? '<div class="text-center text-slate-500 mt-10"><i class="fas fa-user-clock text-5xl mb-4 block opacity-50"></i> <p class="text-lg font-bold">أنت وحدك هنا.. شارك الرمز مع أصدقائك لينضموا.</p></div>' : ''}
+                    </div>
+                    
+                    <div class="mt-auto flex-shrink-0">
+                        ${isHost ? `
+                            <button onclick="window.startOnlineRound()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-5 rounded-2xl shadow-xl transition-all transform hover:scale-[1.02] active:scale-95 text-2xl" ${playersArr.length < 2 ? 'disabled style="opacity:0.5; filter:grayscale(1);"' : ''}>
+                                ابدأ التحدي الآن <i class="fas fa-play mr-2"></i>
+                            </button>
+                        ` : `
+                            <div class="bg-amber-900/30 border border-amber-700/50 text-amber-300 p-5 rounded-2xl text-center font-bold flex items-center justify-center text-xl shadow-inner">
+                                <i class="fas fa-circle-notch fa-spin ml-4 text-2xl"></i>
+                                <span>في انتظار المضيف لبدء اللعبة...</span>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.startOnlineRound = async function() {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+            const snap = await getDoc(roomRef);
+            const roomData = snap.data();
+            
+            if (Object.keys(roomData.players).length < 2) return showMessage("الفيزياء ممتعة أكثر مع الأصدقاء! لا يمكنك اللعب وحدك.");
+
+            // استبعاد الأسئلة التي تم لعبها في هذه الغرفة سابقاً
+            let used = roomData.usedQuestions || [];
+            let availableQs = physicsData.filter(q => !used.includes(q.prompt));
+            
+            // إذا انتهت جميع الأسئلة المتاحة، نقوم بتصفير القائمة لتبدأ من جديد
+            if (availableQs.length === 0) {
+                used = [];
+                availableQs = physicsData;
+            }
+
+            const qIndex = Math.floor(Math.random() * availableQs.length);
+            const question = availableQs[qIndex];
+            used.push(question.prompt);
+            
+            const players = roomData.players;
+            let resetPlayers = {};
+            for(let uid in players) {
+                resetPlayers[uid] = { ...players[uid], currentFake: "", currentVote: "", roundScore: 0 };
+            }
+
+            const btn = document.querySelector('button');
+            if(btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري إعداد الجولة...';
+            
+            await updateDoc(roomRef, { gameState: 'write', currentQuestion: question, usedQuestions: used, roundOptions: [], players: resetPlayers });
+        };
+
+        function renderWrite(data) {
+            const myData = data.players[currentUser.uid];
+            const isHost = data.hostId === currentUser.uid;
+            const totalPlayers = Object.keys(data.players).length;
+            const submittedCount = Object.values(data.players).filter(p => p.currentFake !== "").length;
+            
+            if (myData.currentFake !== "") {
+                // زر تخطي للمضيف في حال أراد إنهاء الوقت لمن لم يجاوب
+                const forceSkipBtn = isHost ? `
+                    <button onclick="window.forceNextPhase()" class="mt-8 px-6 py-3 bg-red-600/80 hover:bg-red-500 text-white rounded-xl font-bold transition-all border border-red-400 text-sm">
+                        <i class="fas fa-forward ml-2"></i>تخطي الغائبين والانتقال للتصويت
+                    </button>` : '';
+
+                appDiv.innerHTML = `
+                    <div class="fade-in flex flex-col justify-center items-center h-full text-center">
+                        <div class="w-28 h-28 bg-green-900/40 rounded-full flex items-center justify-center mb-8 border-4 border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.4)]">
+                            <i class="fas fa-check text-6xl text-green-400"></i>
+                        </div>
+                        <h2 class="text-4xl font-black mb-6 text-white">تم إرسال فخك بنجاح!</h2>
+                        <div class="w-full max-w-sm bg-slate-800 rounded-full h-4 mb-4 overflow-hidden border border-slate-700 shadow-inner">
+                            <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-700" style="width: ${(submittedCount / totalPlayers) * 100}%"></div>
+                        </div>
+                        <p class="text-slate-300 text-xl font-bold">في انتظار البقية (${submittedCount}/${totalPlayers})</p>
+                        ${forceSkipBtn}
+                    </div>
+                `;
+                return;
+            }
+
+            const categoryBadge = getCategoryBadge(data.currentQuestion.category);
+
+            appDiv.innerHTML = `
+                <div class="fade-in flex flex-col h-full flex-grow relative">
+                    <div class="absolute top-0 right-0 left-0 -mt-6 -mx-6 sm:-mt-10 sm:-mx-10 h-1.5 bg-slate-800">
+                        <div class="bg-purple-500 h-full transition-all duration-500" style="width: ${(submittedCount / totalPlayers) * 100}%"></div>
+                    </div>
+
+                    <div class="flex justify-between items-center mb-6 mt-4">
+                        <div class="flex items-center bg-slate-800/80 px-4 py-2 rounded-full border border-slate-600 shadow-sm">
+                            <i class="fas fa-user-circle text-purple-400 ml-2 text-xl"></i>
+                            <span class="font-bold text-base text-slate-100">${myData.name}</span>
+                        </div>
+                        <div class="bg-yellow-900/40 px-4 py-2 rounded-full border border-yellow-700/50 shadow-sm">
+                            <span class="text-yellow-400 font-black text-lg mr-1">${myData.score}</span> <i class="fas fa-star text-yellow-500"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-slate-800 to-[#0f172a] border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl text-center relative flex-shrink-0 mt-4">
+                        <div class="absolute -top-5 left-1/2 transform -translate-x-1/2">${categoryBadge}</div>
+                        <p class="text-2xl md:text-3xl leading-relaxed font-bold text-white mt-6 drop-shadow-md">"${data.currentQuestion.prompt}"</p>
+                    </div>
+
+                    <div class="mt-auto bg-slate-900/90 p-6 rounded-3xl border border-slate-700 shadow-inner">
+                        <p class="text-base text-slate-300 mb-4 font-bold text-center">
+                            <i class="fas fa-lightbulb text-yellow-400 ml-2 text-xl"></i> اكتب <span class="text-red-400 border-b-2 border-red-400 pb-1">إجابة مزيفة</span> ومقنعة لتخدع بها البقية:
+                        </p>
+                        <input type="text" id="fake-input" autocomplete="off" placeholder="اكتب فخك الفيزيائي هنا..." class="w-full bg-black/60 border-2 border-purple-500/50 rounded-2xl p-5 text-white text-center text-2xl mb-5 focus:outline-none focus:border-purple-400 transition-all font-bold shadow-inner placeholder-slate-600">
+                        <button onclick="window.submitOnlineFake()" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl transition-transform transform hover:scale-[1.02] active:scale-95 text-2xl">
+                            أرسل الفخ سراً <i class="fas fa-paper-plane mr-2"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const input = document.getElementById('fake-input');
+                if(input) {
+                    input.focus();
+                    input.addEventListener("keypress", (e) => { if (e.key === "Enter") window.submitOnlineFake(); });
+                }
+            }, 100);
+        }
+
+        window.submitOnlineFake = async function() {
+            const input = document.getElementById('fake-input');
+            const val = input.value.trim();
+            if (!val) {
+                input.classList.add('border-red-500', 'animate-pulse');
+                setTimeout(() => input.classList.remove('border-red-500', 'animate-pulse'), 800);
+                return;
+            }
+
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+            const snap = await getDoc(roomRef);
+            const roomData = snap.data();
+            if(roomData.gameState !== 'write') return;
+
+            if (val.toLowerCase() === roomData.currentQuestion.answer.toLowerCase()) {
+                showMessage("لقد كتبت الإجابة الصحيحة بالصدفة! الهدف هو كتابة إجابة خاطئة لتخدع أصدقائك.");
+                input.value = "";
+                return;
+            }
+
+            const btn = document.querySelector('button');
+            if(btn) { btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> جاري الإرسال...'; btn.disabled = true; }
+            await updateDoc(roomRef, { [`players.${currentUser.uid}.currentFake`]: val });
+        };
+
+        function renderVote(data) {
+            const myData = data.players[currentUser.uid];
+            const isHost = data.hostId === currentUser.uid;
+            const totalPlayers = Object.keys(data.players).length;
+            const votedCount = Object.values(data.players).filter(p => p.currentVote !== "").length;
+
+            if (myData.currentVote !== "") {
+                const forceSkipBtn = isHost ? `
+                    <button onclick="window.forceNextPhase()" class="mt-8 px-6 py-3 bg-red-600/80 hover:bg-red-500 text-white rounded-xl font-bold transition-all border border-red-400 text-sm">
+                        <i class="fas fa-forward ml-2"></i>تخطي الغائبين وإظهار النتائج
+                    </button>` : '';
+
+                appDiv.innerHTML = `
+                    <div class="fade-in flex flex-col justify-center items-center h-full text-center">
+                        <div class="w-28 h-28 bg-blue-900/40 rounded-full flex items-center justify-center mb-8 border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.4)]">
+                            <i class="fas fa-vote-yea text-6xl text-blue-400"></i>
+                        </div>
+                        <h2 class="text-4xl font-black mb-6 text-white">تم تسجيل تصويتك!</h2>
+                        <div class="w-full max-w-sm bg-slate-800 rounded-full h-4 mb-4 overflow-hidden border border-slate-700 shadow-inner">
+                            <div class="bg-gradient-to-r from-blue-500 to-cyan-500 h-full transition-all duration-700" style="width: ${(votedCount / totalPlayers) * 100}%"></div>
+                        </div>
+                        <p class="text-slate-300 text-xl font-bold">في انتظار تصويت البقية (${votedCount}/${totalPlayers})</p>
+                        ${forceSkipBtn}
+                    </div>
+                `;
+                return;
+            }
+
+            let buttonsHtml = '';
+            data.roundOptions.forEach((opt) => {
+                const isOwnFake = opt.author === myData.name;
+                const disableClass = isOwnFake ? 'opacity-40 pointer-events-none bg-slate-900 border-dashed border-slate-600' : 'hover:bg-slate-700 hover:border-blue-400/80 cursor-pointer bg-slate-800/90 border-slate-500 shadow-lg transform hover:-translate-y-1 active:scale-95';
+                buttonsHtml += `
+                    <div ${isOwnFake ? '' : `onclick="window.submitOnlineVote('${opt.text.replace(/'/g, "\\'")}')"`} 
+                         class="border-2 p-5 rounded-2xl text-xl md:text-2xl font-bold text-center transition-all duration-200 ${disableClass} flex flex-col items-center justify-center min-h-[90px]">
+                        <span class="text-white drop-shadow-sm">${opt.text}</span>
+                        ${isOwnFake ? '<span class="text-sm text-red-400 mt-2 bg-red-900/20 px-3 py-1 rounded-md"><i class="fas fa-ban ml-1"></i> هذا فخك الخاص</span>' : ''}
+                    </div>
+                `;
+            });
+
+            const categoryBadge = getCategoryBadge(data.currentQuestion.category);
+
+            appDiv.innerHTML = `
+                <div class="fade-in flex flex-col h-full flex-grow relative overflow-hidden">
+                    <div class="absolute top-0 right-0 left-0 -mt-6 -mx-6 sm:-mt-10 sm:-mx-10 h-1.5 bg-slate-800 z-20">
+                        <div class="bg-blue-500 h-full transition-all duration-500" style="width: ${(votedCount / totalPlayers) * 100}%"></div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-slate-800 to-[#0f172a] border border-blue-500/30 p-6 sm:p-8 rounded-3xl mb-6 shadow-2xl text-center mt-6 relative flex-shrink-0">
+                        <div class="absolute -top-5 left-1/2 transform -translate-x-1/2">${categoryBadge}</div>
+                        <p class="text-2xl md:text-3xl leading-relaxed font-bold mt-4 text-white drop-shadow-md">"${data.currentQuestion.prompt}"</p>
+                    </div>
+
+                    <div class="text-center mb-5 flex-shrink-0">
+                        <span class="inline-flex items-center text-base text-yellow-400 bg-yellow-900/20 px-6 py-2 rounded-full animate-pulse font-bold border border-yellow-700/30 shadow-sm">
+                            <i class="fas fa-search ml-2 text-xl"></i> ابحث عن الإجابة الحقيقية واحذر الفخاخ!
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2 flex-grow overflow-y-auto custom-scrollbar p-2 pb-6 content-start">
+                        ${buttonsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.submitOnlineVote = async function(selectedText) {
+            appDiv.innerHTML = `<div class="flex flex-col justify-center items-center h-full"><div class="w-12 h-12 border-4 border-white/10 border-t-blue-500 rounded-full animate-spin mb-4"></div><p class="font-bold text-blue-300 text-xl">جاري تسجيل التصويت...</p></div>`;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+            await updateDoc(roomRef, { [`players.${currentUser.uid}.currentVote`]: selectedText });
+        };
+
+        function renderResults(data, isHost) {
+            const playersArr = Object.values(data.players);
+            const correctVoters = [];
+            const tricksterMap = {};
+
+            const myData = data.players[currentUser.uid];
+            const myRoundScore = myData.roundScore || 0;
+
+            playersArr.forEach(p => {
+                const votedOption = data.roundOptions.find(o => o.text === p.currentVote);
+                if (votedOption) {
+                    if (votedOption.isReal) correctVoters.push(p.name);
+                    else {
+                        if (!tricksterMap[votedOption.author]) tricksterMap[votedOption.author] = { text: votedOption.text, victims: [] };
+                        tricksterMap[votedOption.author].victims.push(p.name);
+                    }
+                }
+            });
+
+            let correctHtml = correctVoters.length > 0 ? 
+                `<div class="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/40 p-5 rounded-2xl mb-6 shadow-lg">
+                    <div class="text-emerald-400 font-bold mb-4 flex items-center text-lg uppercase tracking-wide"><i class="fas fa-check-circle ml-2 text-2xl"></i> أذكياء الجولة (+10 نقاط):</div>
+                    <div class="flex flex-wrap gap-3">${correctVoters.map(n => `<span class="bg-black/60 text-lg px-4 py-2 rounded-xl text-white font-bold border border-emerald-500/30 shadow-sm">${n}</span>`).join('')}</div>
+                </div>` : 
+                `<div class="text-center text-red-400 text-xl mb-6 bg-red-900/20 p-5 rounded-2xl border border-red-500/30 font-bold shadow-md"><i class="fas fa-brain text-4xl mb-3 block"></i> الجولة صعبة! لم ينجح أحد في معرفة الإجابة الصحيحة.</div>`;
+
+            let trapsHtml = Object.keys(tricksterMap).length > 0 ? Object.keys(tricksterMap).map(author => {
+                const info = tricksterMap[author];
+                return `<div class="bg-slate-800/90 border-r-4 border-purple-500 p-5 rounded-2xl mb-4 shadow-md">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="font-bold text-purple-300 text-xl md:text-2xl drop-shadow-sm">"${info.text}"</span>
+                                <span class="text-yellow-400 text-sm font-bold bg-yellow-900/50 border border-yellow-600/30 px-3 py-1.5 rounded-lg shadow-sm">+${info.victims.length * 15} لـ ${author}</span>
+                            </div>
+                            <div class="text-base text-slate-300 bg-black/30 p-3 rounded-xl border border-white/5"><span class="text-red-400 font-bold"><i class="fas fa-skull-crossbones ml-1"></i> الضحايا:</span> ${info.victims.join('، ')}</div>
+                        </div>`;
+            }).join('') : `<div class="bg-slate-800/60 border border-slate-700 p-5 rounded-2xl text-center text-slate-400 font-bold text-lg">لم يقع أحد في أي فخ هذه الجولة.</div>`;
+
+            let sortedPlayers = [...playersArr].sort((a,b) => b.score - a.score);
+            let leaderboardHtml = sortedPlayers.slice(0, 5).map((p, i) => {
+                let crown = i === 0 ? '<i class="fas fa-crown text-yellow-400 absolute -top-4 -right-3 transform rotate-12 text-3xl drop-shadow-lg z-10"></i>' : '';
+                let borderClass = i === 0 ? 'border-yellow-500/60 shadow-[0_0_20px_rgba(234,179,8,0.25)] bg-slate-800 scale-105' : 'border-slate-600 bg-slate-800/60';
+                return `
+                <div class="relative text-center px-4 py-4 rounded-2xl border-2 ${borderClass} min-w-[85px] flex-grow sm:flex-grow-0 transition-transform">
+                    ${crown}
+                    <div class="font-bold text-sm truncate max-w-[90px] text-slate-300 mb-1" title="${p.name}">${p.name}</div>
+                    <div class="text-2xl md:text-3xl font-black text-white">${p.score}</div>
+                </div>
+            `}).join('');
+
+            const categoryBadge = getCategoryBadge(data.currentQuestion.category);
+
+            const personalScoreHtml = `
+                <div class="bg-gradient-to-r ${myRoundScore > 0 ? 'from-yellow-600/40 to-yellow-800/40 border-yellow-500/50' : 'from-slate-700/40 to-slate-800/40 border-slate-600/50'} border-2 p-5 rounded-3xl mb-2 text-center shadow-xl transform transition-all hover:scale-[1.02] flex-shrink-0 mt-4">
+                    <h3 class="text-2xl md:text-3xl font-black ${myRoundScore > 0 ? 'text-yellow-400 drop-shadow-md' : 'text-slate-300'} mb-2">
+                       ${myRoundScore > 0 ? `<i class="fas fa-star mr-2"></i> رائع! كسبت +${myRoundScore} نقطة في هذه الجولة <i class="fas fa-star ml-2"></i>` : `<i class="fas fa-sad-tear mr-2"></i> لم تكسب أي نقاط هذه الجولة`}
+                    </h3>
+                    <p class="text-white font-bold text-lg md:text-xl">إجمالي نقاطك الآن: <span class="${myRoundScore > 0 ? 'text-yellow-400' : 'text-white'} text-2xl md:text-3xl font-black ml-1">${myData.score}</span></p>
+                </div>
+            `;
+
+            appDiv.innerHTML = `
+                <div class="fade-in flex flex-col h-full overflow-hidden">
+                    
+                    ${personalScoreHtml}
+
+                    <div class="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 border border-emerald-500/50 p-6 rounded-3xl mb-6 text-center relative mt-4 shadow-xl flex-shrink-0">
+                        <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">${categoryBadge}</div>
+                        <p class="text-emerald-300/90 text-sm mb-2 uppercase tracking-widest mt-3 font-bold">الإجابة الحقيقية هي:</p>
+                        <p class="text-3xl md:text-4xl font-black text-emerald-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">${data.currentQuestion.answer}</p>
+                    </div>
+
+                    <div class="flex-grow overflow-y-auto custom-scrollbar pr-2 mb-4">
+                        ${correctHtml}
+                        
+                        <div class="flex items-center mb-4 mt-6">
+                            <i class="fas fa-spider text-purple-400 ml-3 text-2xl"></i>
+                            <h3 class="text-lg font-black text-slate-200 uppercase tracking-wider drop-shadow-sm">تحليل الفخاخ الذكية</h3>
+                        </div>
+                        <div class="mb-8">${trapsHtml}</div>
+                        
+                        <div class="flex items-center mb-5 border-t border-slate-700 pt-6">
+                            <i class="fas fa-trophy text-yellow-500 ml-3 text-2xl"></i>
+                            <h3 class="text-lg font-black text-yellow-500/90 uppercase tracking-wider">لوحة الشرف (أفضل ${Math.min(5, playersArr.length)})</h3>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-4 pb-6">${leaderboardHtml}</div>
+                    </div>
+
+                    <div class="mt-auto pt-4 border-t border-slate-700 flex-shrink-0">
+                        ${isHost ? `<button onclick="window.startOnlineRound()" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-5 rounded-2xl shadow-xl transition-transform transform hover:scale-[1.02] active:scale-95 text-2xl">بدء الجولة التالية <i class="fas fa-forward mr-2"></i></button>` 
+                                 : `<div class="bg-slate-800/80 border border-slate-700 p-5 rounded-2xl text-center shadow-inner flex justify-center items-center"><i class="fas fa-circle-notch fa-spin ml-3 text-slate-400 text-2xl"></i><span class="text-slate-300 font-bold text-lg">في انتظار المضيف لبدء الجولة...</span></div>`}
+                    </div>
+                </div>
+            `;
+        }
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
