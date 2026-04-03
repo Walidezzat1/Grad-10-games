@@ -65,9 +65,10 @@
         // =================================================================
         // جلب قاعدة البيانات من ملف physics_database.js الخارجي
         // =================================================================
-        const physicsData = window.physicsData || [];
+        // تم تصحيح طريقة الجلب: المتغيرات المعرفة بـ const في السكربتات الخارجية لا ترتبط بـ window
+        const appPhysicsData = typeof physicsData !== 'undefined' ? physicsData : (window.physicsData || []);
 
-        if (physicsData.length === 0) {
+        if (appPhysicsData.length === 0) {
             console.error("لم يتم العثور على الأسئلة! تأكد من رفع ملف physics_database.js بجانب ملف index.html");
         }
 
@@ -146,8 +147,34 @@
                     }
                 });
             } catch (error) {
-                console.error(error);
-                appDiv.innerHTML = `<div class="text-center text-red-400 mt-10 font-bold text-xl">حدث خطأ في الاتصال بخوادم Firebase. تأكد من إعداداتك وتفعيل المصادقة (Anonymous).</div>`;
+                console.error("Firebase Auth Error:", error);
+                
+                // رسالة مخصصة لخطأ auth/configuration-not-found
+                let extraHelp = "";
+                if (error.code === 'auth/configuration-not-found') {
+                    extraHelp = "<li class='text-yellow-200'><b>مهم جداً:</b> لم تقم ببدء خدمة المصادقة في مشروعك. اذهب إلى Firebase Console، ثم قسم <b>Authentication</b>، واضغط على الزر الكبير <b>Get Started</b> قبل تفعيل الدخول المجهول.</li>";
+                }
+
+                appDiv.innerHTML = `
+                    <div class="text-center bg-red-900/20 p-6 sm:p-10 rounded-3xl border border-red-500/50 max-w-lg mx-auto shadow-2xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 left-0 h-1 bg-red-500"></div>
+                        <i class="fas fa-exclamation-triangle text-6xl mb-6 text-red-500 animate-pulse drop-shadow-md"></i>
+                        <h2 class="text-3xl font-black text-white mb-6">تعذر الاتصال بالخوادم!</h2>
+                        
+                        <div class="text-right text-slate-300 text-sm md:text-base mb-6 leading-relaxed bg-black/40 p-5 rounded-2xl border border-white/5">
+                            <p class="font-bold mb-3 text-red-300"><i class="fas fa-tools ml-2"></i>خطوات الإصلاح (في لوحة تحكم Firebase):</p>
+                            <ol class="list-decimal list-inside space-y-3">
+                                ${extraHelp}
+                                <li>تأكد من تفعيل الدخول المجهول <span class="text-white font-bold bg-slate-800 px-2 py-0.5 rounded">Anonymous</span> في قسم <span dir="ltr">Authentication > Sign-in method</span>.</li>
+                                <li>بما أن اللعبة مرفوعة على GitHub، يجب إضافة رابط موقعك (مثل <i>yourname.github.io</i>) إلى قائمة <span class="text-white font-bold bg-slate-800 px-2 py-0.5 rounded" dir="ltr">Authorized domains</span> الموجودة في إعدادات Authentication.</li>
+                            </ol>
+                        </div>
+                        
+                        <div class="bg-[#0f172a] p-4 rounded-xl text-left text-xs md:text-sm text-red-400 overflow-x-auto font-mono mt-4 border-l-4 border-red-500 shadow-inner" dir="ltr">
+                            <span class="text-slate-500 block mb-1">// رسالة الخطأ التقنية المباشرة:</span>
+                            ${error.message || error.code || 'Unknown Error Occurred'}
+                        </div>
+                    </div>`;
             }
         }
 
@@ -156,7 +183,7 @@
             appDiv.innerHTML = `
                 <div class="text-center fade-in flex flex-col h-full">
                     <div class="bg-emerald-900/40 text-emerald-300 text-xs sm:text-sm py-2 px-5 rounded-full self-center mb-6 border border-emerald-500/30 flex items-center shadow-sm">
-                        <i class="fas fa-wifi mr-2"></i> متصل بالخوادم (${physicsData.length} سؤال جاهز)
+                        <i class="fas fa-wifi mr-2"></i> متصل بالخوادم (${appPhysicsData.length} سؤال جاهز)
                     </div>
                     <div class="relative inline-block mx-auto mb-4">
                         <i class="fas fa-atom text-7xl sm:text-8xl text-purple-400 animate-spin drop-shadow-lg" style="animation-duration: 6s;"></i>
@@ -219,7 +246,8 @@
                 await setDoc(roomRef, initialData);
                 listenToRoom(roomId);
             } catch (error) {
-                showMessage("حدث خطأ أثناء إنشاء الغرفة. تأكد من اتصالك بالإنترنت ومن إعدادات Firebase.");
+                console.error(error);
+                showMessage("حدث خطأ أثناء إنشاء الغرفة. يرجى التحقق من اتصالك بالإنترنت وقواعد (Rules) قاعدة البيانات.");
                 renderHome();
             }
         }
@@ -269,6 +297,7 @@
                 });
                 listenToRoom(roomId);
             } catch(error) {
+                 console.error(error);
                  showMessage("فشل الانضمام للغرفة."); 
                  renderHome();
             }
@@ -302,7 +331,7 @@
                 }
             }, (error) => {
                 console.error("Firebase Snapshot Error:", error);
-                showMessage("حدث خطأ في الاتصال بقاعدة البيانات.");
+                showMessage("حدث خطأ في الاتصال بقاعدة البيانات. تأكد من إعدادات الـ Rules.");
             });
         }
 
@@ -438,12 +467,12 @@
 
             // استبعاد الأسئلة التي تم لعبها في هذه الغرفة سابقاً
             let used = roomData.usedQuestions || [];
-            let availableQs = physicsData.filter(q => !used.includes(q.prompt));
+            let availableQs = appPhysicsData.filter(q => !used.includes(q.prompt));
             
             // إذا انتهت جميع الأسئلة المتاحة، نقوم بتصفير القائمة لتبدأ من جديد
             if (availableQs.length === 0) {
                 used = [];
-                availableQs = physicsData;
+                availableQs = appPhysicsData;
             }
 
             const qIndex = Math.floor(Math.random() * availableQs.length);
